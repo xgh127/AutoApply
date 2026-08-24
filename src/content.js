@@ -1502,7 +1502,7 @@
       .filter(isVisible);
     const labels = controls
       .map(getControlContextLabel)
-      .filter((label) => label && !isOptionOnlyLabel(label) && !/OpenJobAutofill/.test(label));
+      .filter((label) => label && !isOptionOnlyLabel(label) && !/AutoApply/.test(label));
 
     return normalizeText([...new Set(labels)].join(" | "), 360);
   }
@@ -2794,7 +2794,7 @@
     const titleWrap = document.createElement("div");
     const title = document.createElement("div");
     title.className = "arf-title";
-    title.textContent = "OpenJobAutofill";
+    title.textContent = "AutoApply";
     const subtitle = document.createElement("div");
     subtitle.className = "arf-subtitle";
     subtitle.dataset.role = "subtitle";
@@ -3268,7 +3268,7 @@
           cleaned &&
           cleaned.length <= 80 &&
           /[\u4e00-\u9fa5A-Za-z]/.test(cleaned) &&
-          !/请输入|请选择|上传文件|内容列表|搜索分类或内容|OpenJobAutofill/.test(cleaned)
+          !/请输入|请选择|上传文件|内容列表|搜索分类或内容|AutoApply/.test(cleaned)
         ) {
           return cleaned.replace(/^[*•\s]+/, "");
         }
@@ -6268,7 +6268,7 @@
     panel.setAttribute(PANEL_COLLAPSED_ATTR, profilePanelCollapsed ? "true" : "false");
     if (collapseBtn) {
       collapseBtn.textContent = profilePanelCollapsed ? "资料" : "收起";
-      collapseBtn.title = profilePanelCollapsed ? "展开 OpenJobAutofill 资料面板" : "收起 OpenJobAutofill 资料面板";
+      collapseBtn.title = profilePanelCollapsed ? "展开 AutoApply 资料面板" : "收起 AutoApply 资料面板";
     }
     if (copyCategoryBtn) {
       copyCategoryBtn.disabled = !activeSection;

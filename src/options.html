@@ -3,18 +3,58 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>OpenJobAutofill 设置</title>
+    <title>AutoApply 设置</title>
     <link rel="stylesheet" href="./options.css" />
   </head>
   <body>
     <main class="page">
       <header class="hero">
+        <img class="brand-logo" src="../icons/autoapply-mark.svg" alt="AutoApply" width="72" height="72" />
         <div>
-          <p class="eyebrow">OpenJobAutofill</p>
+          <p class="eyebrow">AutoApply</p>
           <h1>维护本机简历资料</h1>
           <p class="hint">数据只保存在本机浏览器里，不会走同步云端。AI 只辅助识别表单字段和可匹配的资料项，不会读取你的简历值。点击开始填写后会自动填写能确定的字段，待处理字段可在资料面板查看和手动复制。</p>
         </div>
       </header>
+
+      <section class="card resume-import-card">
+        <div class="resume-import-head">
+          <div>
+            <p class="eyebrow">AI RESUME IMPORT</p>
+            <h2>用 AI 导入简历</h2>
+            <p class="hint">复制提示词，把提示词和你的简历发送给豆包、通义、ChatGPT 等你信任的 AI，再把它返回的 JSON 粘贴回来。</p>
+          </div>
+          <span class="external-badge">USER CONTROLLED</span>
+        </div>
+        <div class="privacy-warning">
+          简历会由你主动复制到所选 AI 服务。AutoApply 不会自动上传，也不会读取 AI 对话内容。
+        </div>
+        <div class="ai-import-grid">
+          <label class="ai-import-field">
+            <span>1. 复制提示词</span>
+            <textarea id="resumePromptOutput" rows="12" readonly spellcheck="false"></textarea>
+          </label>
+          <label class="ai-import-field">
+            <span>2. 粘贴 AI 返回的 JSON</span>
+            <textarea id="resumeImportResponse" rows="12" spellcheck="false" placeholder="粘贴模型返回的 AutoApplyResumeImportV1 JSON"></textarea>
+          </label>
+        </div>
+        <div class="actions resume-import-actions">
+          <button id="copyResumePrompt" type="button">复制提示词</button>
+          <button id="previewResumeImport" class="secondary" type="button">解析并预览</button>
+          <button id="clearResumeImport" class="ghost" type="button">清空结果</button>
+        </div>
+        <p id="resumeImportFeedback" class="profile-feedback" aria-live="polite"></p>
+        <div id="resumeImportPreview" class="resume-import-preview" hidden>
+          <div id="resumeImportSummary" class="resume-import-summary"></div>
+          <div id="resumeImportFields" class="resume-import-fields"></div>
+          <div id="resumeImportUnmapped" class="resume-import-unmapped"></div>
+          <div class="actions">
+            <button id="applyResumeImport" type="button">应用到资料编辑器</button>
+            <button id="cancelResumeImport" class="ghost" type="button">取消预览</button>
+          </div>
+        </div>
+      </section>
 
       <section class="onboarding-guide card" aria-label="首次使用步骤">
         <div>
@@ -198,6 +238,6 @@
     </main>
     <div id="toast" class="toast" role="status" aria-live="polite" aria-atomic="true" hidden></div>
 
-    <script src="./options.js"></script>
+    <script type="module" src="./options.js"></script>
   </body>
 </html>

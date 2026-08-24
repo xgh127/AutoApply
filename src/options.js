@@ -1,3 +1,8 @@
+import {
+  buildResumeImportPrompt,
+  parseResumeImportResponse
+} from "./ai-resume-import.mjs";
+
 const fields = {
   apiMode: document.getElementById("apiMode"),
   apiKey: document.getElementById("apiKey"),
@@ -20,6 +25,18 @@ const fields = {
   profileTips: document.getElementById("profileTips"),
   profileFileInput: document.getElementById("profileFileInput"),
   profileFeedback: document.getElementById("profileFeedback"),
+  resumePromptOutput: document.getElementById("resumePromptOutput"),
+  copyResumePromptButton: document.getElementById("copyResumePrompt"),
+  resumeImportResponse: document.getElementById("resumeImportResponse"),
+  previewResumeImportButton: document.getElementById("previewResumeImport"),
+  clearResumeImportButton: document.getElementById("clearResumeImport"),
+  resumeImportFeedback: document.getElementById("resumeImportFeedback"),
+  resumeImportPreview: document.getElementById("resumeImportPreview"),
+  resumeImportSummary: document.getElementById("resumeImportSummary"),
+  resumeImportFields: document.getElementById("resumeImportFields"),
+  resumeImportUnmapped: document.getElementById("resumeImportUnmapped"),
+  applyResumeImportButton: document.getElementById("applyResumeImport"),
+  cancelResumeImportButton: document.getElementById("cancelResumeImport"),
   apiFeedback: document.getElementById("apiFeedback"),
   apiPreviewBox: document.getElementById("apiPreviewBox"),
   apiPreview: document.getElementById("apiPreview"),
@@ -463,6 +480,7 @@ let savedApiConfigKey = "";
 let profileHasUnsavedChanges = false;
 let profileSaveFeedbackTimer = 0;
 let toastTimer = 0;
+let pendingResumeImport = null;
 
 document.getElementById("settingsForm").addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -491,6 +509,11 @@ fields.baseUrl.addEventListener("change", () => maybeAutoRefreshModelList());
 fields.customUrl.addEventListener("change", () => maybeAutoRefreshModelList());
 registerApiDirtyTracking();
 fields.profileFileInput.addEventListener("change", importProfileFromFile);
+fields.copyResumePromptButton?.addEventListener("click", copyResumePrompt);
+fields.previewResumeImportButton?.addEventListener("click", previewResumeImport);
+fields.clearResumeImportButton?.addEventListener("click", clearResumeImport);
+fields.applyResumeImportButton?.addEventListener("click", applyResumeImport);
+fields.cancelResumeImportButton?.addEventListener("click", cancelResumeImport);
 fields.profileSectionEditor.addEventListener("input", handleProfileEditorInput);
 fields.profileSectionEditor.addEventListener("focusin", handleProfileSectionFocus);
 fields.profileSectionEditor.addEventListener("click", handleStructuredProfileClick);
@@ -503,6 +526,7 @@ fields.openUpdateButton?.addEventListener("click", () => {
 window.addEventListener("scroll", scheduleProfileSectionSync, { passive: true });
 window.addEventListener("resize", scheduleProfileSectionSync);
 
+initializeResumeImportPrompt();
 loadSettings();
 loadUpdateStatus();
 
@@ -523,6 +547,7 @@ async function loadSettings() {
     renderProfileNav();
     renderProfileTips(RESUME_SECTION_GUIDE[0]?.key);
     renderProfileSectionEditor(getProfileV2FromSettings(settings));
+    initializeResumeImportPrompt();
     setProfileSaved("资料已加载，当前没有未保存修改。");
     scheduleProfileSectionSync();
     updateModeBlocks();
@@ -709,7 +734,7 @@ async function exportProfile() {
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `openjobautofill-profile-${new Date().toISOString().slice(0, 10)}.json`;
+    anchor.download = `autoapply-profile-${new Date().toISOString().slice(0, 10)}.json`;
     document.body.appendChild(anchor);
     anchor.click();
     anchor.remove();
@@ -744,6 +769,177 @@ async function importProfileFromFile() {
   } finally {
     fields.profileFileInput.value = "";
   }
+}
+
+function initializeResumeImportPrompt() {
+  if (!fields.resumePromptOutput) {
+    return;
+  }
+  fields.resumePromptOutput.value = buildResumeImportPrompt(
+    STRUCTURED_RESUME_SECTIONS.map((section) => ({
+      key: section.key,
+      title: section.title,
+      kind: section.kind,
+      fields: (section.fields || []).map((field) => ({
+        label: field.label,
+        type: field.type || "text"
+      }))
+    }))
+  );
+}
+
+async function copyResumePrompt() {
+  const prompt = String(fields.resumePromptOutput?.value || "");
+  if (!prompt) {
+    setResumeImportFeedback("提示词尚未生成，请刷新设置页。", "error");
+    return;
+  }
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(prompt);
+    } else {
+      const helper = document.createElement("textarea");
+      helper.value = prompt;
+      helper.style.position = "fixed";
+      helper.style.opacity = "0";
+      document.body.appendChild(helper);
+      helper.select();
+      document.execCommand("copy");
+      helper.remove();
+    }
+    setResumeImportFeedback("提示词已复制。请把它和简历一起发送给你信任的 AI。", "saved");
+    showToast("提示词已复制。");
+  } catch (error) {
+    setResumeImportFeedback("复制失败，请手动选中提示词复制。", "error");
+  }
+}
+
+function previewResumeImport() {
+  const responseText = String(fields.resumeImportResponse?.value || "").trim();
+  if (!responseText) {
+    setResumeImportFeedback("请先粘贴 AI 返回的 JSON。", "error");
+    return;
+  }
+
+  try {
+    const result = parseResumeImportResponse(responseText, collectProfileV2FromEditor());
+    if (!result.importedCount) {
+      throw new Error("JSON 中没有可导入的资料字段。");
+    }
+    pendingResumeImport = result;
+    renderResumeImportSummary(result);
+    fields.resumeImportPreview.hidden = false;
+    setResumeImportFeedback(
+      "已生成导入预览。确认内容后再应用到资料编辑器，尚未保存。",
+      "saved"
+    );
+  } catch (error) {
+    pendingResumeImport = null;
+    fields.resumeImportPreview.hidden = true;
+    setResumeImportFeedback("导入结果无效：" + error.message, "error");
+  }
+}
+
+function renderResumeImportSummary(result) {
+  fields.resumeImportSummary.textContent = "本次将导入 " + result.importedCount + " 项资料。";
+  fields.resumeImportFields.textContent = "";
+  fields.resumeImportUnmapped.textContent = "";
+
+  for (const field of result.changedFields) {
+    const row = document.createElement("div");
+    row.className = "resume-import-row";
+    const path = document.createElement("strong");
+    path.textContent = formatImportPath(field.path);
+    const value = document.createElement("span");
+    value.textContent = field.value;
+    row.append(path, value);
+    fields.resumeImportFields.appendChild(row);
+  }
+
+  if (result.unmapped.length) {
+    const heading = document.createElement("strong");
+    heading.textContent = "待确认内容";
+    fields.resumeImportUnmapped.appendChild(heading);
+    for (const item of result.unmapped) {
+      const row = document.createElement("div");
+      row.className = "resume-import-row is-unmapped";
+      row.textContent = item.reason ? item.text + "（" + item.reason + "）" : item.text;
+      fields.resumeImportUnmapped.appendChild(row);
+    }
+  }
+}
+
+function formatImportPath(path) {
+  const source = String(path || "");
+  const itemValues = source.match(/^([^\.]+)\.items\.(\d+)\.values\.(.+)$/);
+  if (itemValues) {
+    return itemValues[1] + " / 第" + (Number(itemValues[2]) + 1) + "条 / " + itemValues[3];
+  }
+  const itemCustom = source.match(/^([^\.]+)\.items\.(\d+)\.custom\.(\d+)\.value$/);
+  if (itemCustom) {
+    return itemCustom[1] + " / 第" + (Number(itemCustom[2]) + 1) + "条 / 自定义字段 " + (Number(itemCustom[3]) + 1);
+  }
+  const sectionValues = source.match(/^([^\.]+)\.values\.(.+)$/);
+  if (sectionValues) {
+    return sectionValues[1] + " / " + sectionValues[2];
+  }
+  const sectionCustom = source.match(/^([^\.]+)\.custom\.(\d+)\.value$/);
+  if (sectionCustom) {
+    return sectionCustom[1] + " / 自定义字段 " + (Number(sectionCustom[2]) + 1);
+  }
+  const customSectionValues = source.match(/^customSections\.(\d+)\.values\.(.+)$/);
+  if (customSectionValues) {
+    return "自定义模块 " + (Number(customSectionValues[1]) + 1) + " / " + customSectionValues[2];
+  }
+  const customSectionCustom = source.match(/^customSections\.(\d+)\.custom\.(\d+)\.value$/);
+  if (customSectionCustom) {
+    return "自定义模块 " + (Number(customSectionCustom[1]) + 1) + " / 自定义字段 " + (Number(customSectionCustom[2]) + 1);
+  }
+  return source;
+}
+
+function applyResumeImport() {
+  if (!pendingResumeImport) {
+    return;
+  }
+
+  renderProfileSectionEditor(pendingResumeImport.profileV2);
+  pendingResumeImport = null;
+  fields.resumeImportPreview.hidden = true;
+  setProfileDirty("AI 简历资料已写入编辑器，请检查后保存。");
+  setResumeImportFeedback("已应用到资料编辑器，尚未保存到本机。", "saved");
+  setStatus("AI 简历资料已应用。请检查内容后点击“保存资料”。");
+  showToast("AI 简历资料已应用，等待保存。");
+  scheduleProfileSectionSync();
+}
+
+function cancelResumeImport() {
+  pendingResumeImport = null;
+  fields.resumeImportPreview.hidden = true;
+  setResumeImportFeedback("已取消预览，资料编辑器未变更。", "");
+}
+
+function clearResumeImport() {
+  pendingResumeImport = null;
+  if (fields.resumeImportResponse) {
+    fields.resumeImportResponse.value = "";
+  }
+  fields.resumeImportPreview.hidden = true;
+  fields.resumeImportSummary.textContent = "";
+  fields.resumeImportFields.textContent = "";
+  fields.resumeImportUnmapped.textContent = "";
+  setResumeImportFeedback("", "");
+}
+
+function setResumeImportFeedback(message, state = "") {
+  const feedback = fields.resumeImportFeedback;
+  if (!feedback) {
+    return;
+  }
+  feedback.textContent = message;
+  feedback.classList.toggle("is-saved", state === "saved");
+  feedback.classList.toggle("error", state === "error");
 }
 
 function resetProfile() {
@@ -1841,7 +2037,7 @@ function parseImportedProfileBackup(text) {
   }
 
   if (!isPlainObject(parsed) || parsed.format !== PROFILE_BACKUP_FORMAT || !parsed.profileV2) {
-    throw new Error("当前只支持导入 OpenJobAutofill 导出的资料备份文件。");
+    throw new Error("当前只支持导入 AutoApply 导出的资料备份文件。");
   }
 
   return normalizeProfileV2(parsed.profileV2);

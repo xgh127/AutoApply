@@ -47,6 +47,13 @@ select {
   min-width: 0;
 }
 
+.popup-brand-logo {
+  display: block;
+  width: 34px;
+  height: 34px;
+  margin-bottom: 8px;
+}
+
 h1,
 h2,
 p {
